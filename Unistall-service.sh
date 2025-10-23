@@ -3,7 +3,7 @@
 #  Name: Uninstall Service Script (Smart VPS Cleaner)
 #  Author: Dodi Dam (Web-Kamikaze)
 #  Repo: https://github.com/web-kamikaze/auto-config-vps
-#  Version: 2.0 (2025-10)
+#  Version: 2.1 (2025-10)
 #  Description: Auto-scan, select, and uninstall services from VPS
 #  Supported OS: Debian, Ubuntu, CentOS, Rocky, AlmaLinux, Fedora
 # =========================================================
@@ -50,37 +50,10 @@ fi
 #  Daftar layanan umum
 # -----------------------------
 SERVICES=(
-    nginx
-    apache2
-    httpd
-    php
-    php-fpm
-    mariadb
-    mysql
-    postgresql
-    redis
-    memcached
-    docker
-    docker-compose
-    fail2ban
-    ufw
-    firewalld
-    netdata
-    nodejs
-    npm
-    python3
-    pip
-    certbot
-    v2ray
-    xray
-    trojan
-    openvpn
-    wireguard
-    shadowsocks
-    speedtest
-    curl
-    vsftpd
-    proftpd
+    nginx apache2 httpd php php-fpm mariadb mysql postgresql redis memcached
+    docker docker-compose fail2ban ufw firewalld netdata nodejs npm python3 pip certbot
+    v2ray xray trojan trojan-go openvpn wireguard shadowsocks shadowsocks-libev
+    speedtest curl vsftpd proftpd
 )
 
 # -----------------------------
@@ -109,7 +82,7 @@ fi
 echo "🔍 Memindai layanan aktif..."
 RUNNING=()
 for s in "${SERVICES[@]}"; do
-    if systemctl list-units --type=service --state=running | grep -q "$s"; then
+    if systemctl list-units --type=service --state=running | grep -qi "$s"; then
         RUNNING+=("$s")
     fi
 done
@@ -155,7 +128,30 @@ for s in "${SELECTED[@]}"; do
     echo "--------------------------------------"
     echo "🔧 Uninstall: $s"
     systemctl stop "$s" 2>/dev/null || true
-    eval "$PKG_REMOVE $s" || echo "⚠️  Gagal menghapus $s (mungkin tidak terpasang)"
+    systemctl disable "$s" 2>/dev/null || true
+    eval "$PKG_REMOVE $s" || echo "⚠️  Tidak ditemukan paket apt/yum untuk $s."
+
+    # ================================
+    #  BONUS: Deteksi manual & hapus
+    # ================================
+    if ! dpkg -l | grep -qw "$s" && ! rpm -qa | grep -qw "$s"; then
+        echo "⚠️  Paket $s tidak ditemukan di package manager. Mencoba hapus manual..."
+        
+        # Hapus unit service mirip
+        for unit in $(systemctl list-unit-files | grep -i "$s" | awk '{print $1}'); do
+            systemctl stop "$unit" 2>/dev/null || true
+            systemctl disable "$unit" 2>/dev/null || true
+            rm -f /etc/systemd/system/$unit
+            rm -f /lib/systemd/system/$unit
+        done
+
+        # Hapus binary & konfigurasi umum
+        rm -rf /usr/local/bin/$s /usr/bin/$s
+        rm -rf /etc/$s /var/log/$s /var/lib/$s
+        rm -rf /opt/$s /root/$s /srv/$s
+
+        echo "🗑️  File biner dan konfigurasi manual untuk $s dihapus (jika ada)."
+    fi
 done
 
 echo
